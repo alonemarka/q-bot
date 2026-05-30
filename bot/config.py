@@ -3,10 +3,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ✅ DOĞRU ŞEKİL
+# BOT TOKEN - BURAYA SADECE DEĞİŞKEN ADI YAZILIYOR
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-# Admin ID'lerin (istediğin kadar ekleyebilirsin)
+# Admin ID'ler (istediğin kadar ekleyebilirsin)
 ADMIN_IDS = [8773299135, 8973632679, 8230461239, 6318435017]
 
 COLORS = {
