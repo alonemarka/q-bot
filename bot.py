@@ -55,6 +55,12 @@ async def get_all_users(page: int = 1, per_page: int = 15):
         """, (per_page, offset)) as cursor:
             return await cursor.fetchall()
 
+async def get_total_users():
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT COUNT(*) FROM users") as cursor:
+            result = await cursor.fetchone()
+            return result[0]
+
 # ====================== QUOTE GENERATOR ======================
 async def create_quote_image(message_text: str, username: str, color: str = "light"):
     colors = COLORS.get(color, COLORS["light"])
@@ -85,20 +91,17 @@ router = Router()
 class BroadcastStates(StatesGroup):
     waiting = State()
 
-# Start Komutu
+# Start
 @router.message(Command("start"))
 async def start(message: Message):
     await add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     await message.answer(
-        "👋 <b>Merhaba! çıkarma yapma Bot'a hoş geldin.</b>\n\n"
-        "sahibim ve kanalımız: @hazretialone / @atattv44vizyon .</b>\n\n"
+        "👋 <b>Merhaba! QuotLy Bot'a hoş geldin.</b>\n\n"
         "Bir mesaja reply yaparak kullan:\n"
-        "• <code>/q</code> → Tek mesaj\n"
-        "• <code>/q2</code> → Son 2 mesaj\n"
-        "• <code>/q3</code> → Son 3 mesaj\n"
-        "• <code>/q4</code> vb...\n\n"
-        "Renk için: <code>/q dark</code> , <code>/q pink</code>\n"
-        "Adminler <code>.admin</code> yazabilir.",
+        "<code>/q</code> → Tek mesaj\n"
+        "<code>/q2</code> → 2 mesaj\n"
+        "<code>/q3</code> → 3 mesaj\n\n"
+        "Renk ekle: <code>/q dark</code> veya <code>/q pink</code>",
         parse_mode="HTML"
     )
 
@@ -108,28 +111,25 @@ async def quote_handler(message: Message):
     await add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     
     try:
-        # Kaç mesaj alınacağını belirle
         cmd = message.text.split()[0]
         count = 1
         if len(cmd) > 2 and cmd[2:].isdigit():
             count = int(cmd[2:])
 
         color = "light"
-        parts = message.text.split()
-        if len(parts) > 1 and parts[1] in COLORS:
-            color = parts[1]
+        if len(message.text.split()) > 1 and message.text.split()[1] in COLORS:
+            color = message.text.split()[1]
 
-        # Mesajları topla
         messages = []
         current = message.reply_to_message
 
         if not current:
-            await message.answer("❌ Lütfen bir mesaja reply yaparak komutu kullanın.")
+            await message.answer("❌ Lütfen bir mesaja **reply** yaparak komutu kullanın.")
             return
 
         for _ in range(count):
             if current:
-                text = current.text or current.caption or "[Medya/Sticker]"
+                text = current.text or current.caption or "[Medya]"
                 user = current.from_user.first_name if current.from_user else "Bilinmiyor"
                 messages.append(f"“{text}”\n— {user}")
                 current = current.reply_to_message
@@ -138,33 +138,82 @@ async def quote_handler(message: Message):
 
         full_text = "\n\n".join(reversed(messages))
 
-        file_path = await create_quote_image(
-            message_text=full_text,
-            username=message.from_user.first_name,
-            color=color
-        )
+        file_path = await create_quote_image(full_text, message.from_user.first_name, color)
 
-        await message.answer_photo(
-            photo=FSInputFile(file_path),
-            caption="✨ QuotLy Bot"
-        )
-
+        await message.answer_photo(FSInputFile(file_path), caption="✨ QuotLy Bot")
+        
         if os.path.exists(file_path):
             os.remove(file_path)
 
-    except Exception as e:
-        await message.answer("❌ Bir hata oluştu, tekrar deneyin.")
+    except Exception:
+        await message.answer("❌ Hata oluştu, tekrar deneyin.")
 
-# Admin Panel
+# ====================== ADMIN MENÜ ======================
 @router.message(Command("admin"))
 async def admin_menu(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
+    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👥 Kullanıcı Listesi", callback_data="users_1")],
+        [InlineKeyboardButton(text="👤 Sahibim", callback_data="owner")],
+        [InlineKeyboardButton(text="📢 Kanal", callback_data="channel")],
         [InlineKeyboardButton(text="📢 Toplu Duyuru", callback_data="broadcast_start")],
     ])
+    
     await message.answer("🔧 <b>Admin Paneli</b>", reply_markup=keyboard, parse_mode="HTML")
+
+# Kullanıcı Listesi (Aktif)
+@router.callback_query(F.data.startswith("users_"))
+async def users_list(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    
+    page = int(callback.data.split("_")[1])
+    users = await get_all_users(page)
+    total = await get_total_users()
+    total_pages = (total + 14) // 15
+
+    text = f"👥 <b>Toplam Kullanıcı: {total}</b>\n\n"
+    for uid, username, name in users:
+        uname = f"@{username}" if username else "Yok"
+        text += f"<code>{uid}</code> | {uname} | {name}\n"
+
+    keyboard = []
+    row = []
+    if page > 1:
+        row.append(InlineKeyboardButton(text="◀️", callback_data=f"users_{page-1}"))
+    if page < total_pages:
+        row.append(InlineKeyboardButton(text="▶️", callback_data=f"users_{page+1}"))
+    if row:
+        keyboard.append(row)
+
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode="HTML")
+
+# Sahibim Butonu
+@router.callback_query(F.data == "owner")
+async def owner_info(callback: CallbackQuery):
+    await callback.answer("Sahibim: @seninusername", show_alert=True)
+
+# Kanal Butonu
+@router.callback_query(F.data == "channel")
+async def channel_info(callback: CallbackQuery):
+    await callback.answer("Kanal: @seninkanal", show_alert=True)
+
+# Toplu Duyuru
+@router.callback_query(F.data == "broadcast_start")
+async def broadcast_start(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    await callback.message.answer("📢 Toplu duyuru için mesajını yaz (foto, video, metin):")
+    await state.set_state(BroadcastStates.waiting)
+
+@router.message(BroadcastStates.waiting)
+async def broadcast_send(message: Message, state: FSMContext):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    await state.clear()
+    await message.answer("✅ Duyuru gönderiliyor... (Şu an test modunda)")
 
 # ====================== MAIN ======================
 async def main():
@@ -176,7 +225,7 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
     
-    print("🚀 QuotLy Bot Başarıyla Başladı!")
+    print("🚀 QuotLy Bot Başladı! .admin komutunu dene.")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
