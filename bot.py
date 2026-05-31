@@ -90,7 +90,8 @@ class BroadcastStates(StatesGroup):
 async def start(message: Message):
     await add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     await message.answer(
-        "👋 <b>Merhaba! QuotLy Bot'a hoş geldin.</b>\n\n"
+        "👋 <b>Merhaba! çıkarma yapma Bot'a hoş geldin.</b>\n\n"
+        "sahibim ve kanalımız: @hazretialone / @atattv44vizyon .</b>\n\n"
         "Bir mesaja reply yaparak kullan:\n"
         "• <code>/q</code> → Tek mesaj\n"
         "• <code>/q2</code> → Son 2 mesaj\n"
