@@ -16,8 +16,8 @@ BOT_TOKEN = "8597974338:AAEiJvJrHY-Ae4HYAZWoZky-31axSuppS9I"
 
 ADMIN_IDS = [8773299135, 8973632679, 8230461239, 6318435017]
 
-SAHIBIM = "@hazretialone"   # ← Burayı değiştir
-KANAL = "@atattv44vizyon"        # ← Burayı değiştir
+SAHIBIM = "@hazretialone"
+KANAL = "@atattv44vizyon"
 
 COLORS = {
     "light": {"bg": "#f8f9fa", "text": "#1f1f1f", "accent": "#0d6efd"},
@@ -72,6 +72,7 @@ async def create_quote_image(message_text: str, username: str, color: str = "lig
         image = Image.new("RGB", (width, height), color=colors["bg"])
         draw = ImageDraw.Draw(image)
 
+        # Font yükleme (Railway için daha güvenli)
         try:
             font_large = ImageFont.truetype("arial.ttf", 42)
             font_small = ImageFont.truetype("arial.ttf", 30)
@@ -104,7 +105,7 @@ class BroadcastStates(StatesGroup):
 async def start(message: Message):
     await add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     await message.answer(
-        f"👋 <b>Merhaba! çıkartma yapma Bot'a hoş geldin.</b>\n\n"
+        f"👋 <b>Merhaba! Çıkartma Yapma Bot'a hoş geldin.</b>\n\n"
         f"Bir mesaja reply yaparak kullan:\n"
         f"<code>/q</code> → Tek mesaj\n"
         f"<code>/q2</code> → 2 mesaj\n"
@@ -120,7 +121,7 @@ async def quote_handler(message: Message):
     await add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     
     if not message.reply_to_message:
-        await message.answer("❌ Lütfen bir mesaja *reply* yaparak komutu kullanın.")
+        await message.answer("❌ Lütfen bir mesaja **reply** yaparak komutu kullanın.")
         return
 
     try:
@@ -154,14 +155,14 @@ async def quote_handler(message: Message):
         if file_path and os.path.exists(file_path):
             await message.answer_photo(
                 photo=FSInputFile(file_path),
-                caption="✨ çıkarma yapma  Bot"
+                caption="✨ Çıkartma Yapma Bot"
             )
             os.remove(file_path)
         else:
             await message.answer("❌ Görsel oluşturulamadı.")
 
     except Exception as e:
-        print(f"Quote hatası: {e}")
+        print(f"Quote handler hatası: {e}")
         await message.answer("❌ Bir hata oluştu, tekrar deneyin.")
 
 # ====================== ADMIN ======================
@@ -211,7 +212,6 @@ async def broadcast_start(callback: CallbackQuery, state: FSMContext):
 async def broadcast_send(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
-    
     await state.clear()
     await message.answer("✅ Duyuru tüm kullanıcılara gönderiliyor...")
 
@@ -251,7 +251,7 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
     
-    print("🚀 QuotLy Bot Tamamen Hazır!")
+    print("🚀 Çıkartma Yapma Bot Tamamen Hazır!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
