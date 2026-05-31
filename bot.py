@@ -8,6 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.client.default import DefaultBotProperties
 import aiosqlite
 
 # ====================== AYARLAR ======================
@@ -54,12 +55,6 @@ async def get_all_users(page: int = 1, per_page: int = 15):
         """, (per_page, offset)) as cursor:
             return await cursor.fetchall()
 
-async def get_total_users():
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute("SELECT COUNT(*) FROM users") as cursor:
-            result = await cursor.fetchone()
-            return result[0]
-
 # ====================== QUOTE GENERATOR ======================
 async def create_quote_image(message_text: str, username: str, color: str = "light"):
     colors = COLORS.get(color, COLORS["light"])
@@ -90,51 +85,55 @@ router = Router()
 class BroadcastStates(StatesGroup):
     waiting = State()
 
-# Karşılama Mesajı
+# Start Komutu
 @router.message(Command("start"))
 async def start(message: Message):
     await add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     await message.answer(
-        "👋 Merhaba! QuotLy Bot'a hoş geldin.\n\n"
-        "Bir mesaja reply yaparak:\n"
-        "• `/q` → Tek mesaj quote\n"
-        "• `/q2` → Son 2 mesaj quote\n"
-        "• `/q3` → Son 3 mesaj quote\n\n"
-        "Adminler `.admin` yazabilir."
+        "👋 <b>Merhaba! QuotLy Bot'a hoş geldin.</b>\n\n"
+        "Bir mesaja reply yaparak kullan:\n"
+        "• <code>/q</code> → Tek mesaj\n"
+        "• <code>/q2</code> → Son 2 mesaj\n"
+        "• <code>/q3</code> → Son 3 mesaj\n"
+        "• <code>/q4</code> vb...\n\n"
+        "Renk için: <code>/q dark</code> , <code>/q pink</code>\n"
+        "Adminler <code>.admin</code> yazabilir.",
+        parse_mode="HTML"
     )
 
-# Quote Komutu (/q, /q2, /q3 ...)
+# Quote Komutu
 @router.message(F.text.startswith("/q"))
 async def quote_handler(message: Message):
     await add_user(message.from_user.id, message.from_user.username, message.from_user.first_name)
     
     try:
-        # Kaç mesaj alınacağını belirle (/q2 → 2)
-        command = message.text.split()[0]
+        # Kaç mesaj alınacağını belirle
+        cmd = message.text.split()[0]
         count = 1
-        if len(command) > 2 and command[2:].isdigit():
-            count = int(command[2:])
+        if len(cmd) > 2 and cmd[2:].isdigit():
+            count = int(cmd[2:])
 
         color = "light"
-        if len(message.text.split()) > 1:
-            arg = message.text.split()[1]
-            if arg in COLORS:
-                color = arg
+        parts = message.text.split()
+        if len(parts) > 1 and parts[1] in COLORS:
+            color = parts[1]
 
         # Mesajları topla
         messages = []
-        current = message.reply_to_message if message.reply_to_message else message
+        current = message.reply_to_message
+
+        if not current:
+            await message.answer("❌ Lütfen bir mesaja reply yaparak komutu kullanın.")
+            return
 
         for _ in range(count):
             if current:
-                text = current.text or current.caption or "Medya içeriği"
-                user = current.from_user.first_name
+                text = current.text or current.caption or "[Medya/Sticker]"
+                user = current.from_user.first_name if current.from_user else "Bilinmiyor"
                 messages.append(f"“{text}”\n— {user}")
-                # Bir önceki mesaja git (grup için)
-                if current.reply_to_message:
-                    current = current.reply_to_message
-                else:
-                    break
+                current = current.reply_to_message
+            else:
+                break
 
         full_text = "\n\n".join(reversed(messages))
 
@@ -153,50 +152,30 @@ async def quote_handler(message: Message):
             os.remove(file_path)
 
     except Exception as e:
-        await message.answer("❌ Bir hata oluştu. Tekrar deneyin.")
+        await message.answer("❌ Bir hata oluştu, tekrar deneyin.")
 
-# Admin Menüsü
+# Admin Panel
 @router.message(Command("admin"))
 async def admin_menu(message: Message):
     if message.from_user.id not in ADMIN_IDS:
         return
-    
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👥 Kullanıcı Listesi", callback_data="users_1")],
         [InlineKeyboardButton(text="📢 Toplu Duyuru", callback_data="broadcast_start")],
     ])
-    
-    await message.answer("🔧 **Admin Paneli**", reply_markup=keyboard, parse_mode="Markdown")
-
-# Diğer admin fonksiyonları (kısaca)
-@router.callback_query(F.data.startswith("users_"))
-async def users_list(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-    await callback.answer("Kullanıcı listesi yakında eklenecek.")
-
-@router.callback_query(F.data == "broadcast_start")
-async def broadcast_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-    await callback.message.answer("📢 Toplu duyuru için mesaj yazın:")
-    await state.set_state(BroadcastStates.waiting)
-
-@router.message(BroadcastStates.waiting)
-async def broadcast_send(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-    await state.clear()
-    await message.answer("Toplu duyuru özelliği şu an devre dışı.")
+    await message.answer("🔧 <b>Admin Paneli</b>", reply_markup=keyboard, parse_mode="HTML")
 
 # ====================== MAIN ======================
 async def main():
     await init_db()
-    bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+    bot = Bot(
+        token=BOT_TOKEN,
+        default=DefaultBotProperties(parse_mode="HTML")
+    )
     dp = Dispatcher()
     dp.include_router(router)
     
-    print("🚀 QuotLy Bot Başladı! /start yazmayı dene.")
+    print("🚀 QuotLy Bot Başarıyla Başladı!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
